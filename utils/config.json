@@ -1,0 +1,38 @@
+
+{
+    "alpha": 4.5,
+    "base_lr": 1e-3,
+    "batchsize":16,
+    "data_folder": "/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/data_loader/",
+    "epoch": 150,
+    "lambda_t": 0.26,
+    "lr_param": {
+        "gamma": 0.001,
+        "lr": 1e-3,
+        "power": 0.75
+    },
+    "mode": {
+        "1": "training_source",
+        "2": "training_target",
+        "3": "testing"
+    },
+    "model": "UNet",
+    "model_path": "/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/model/",
+    "time_file":"/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/utils/",
+    "prediction_path":"/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/predictions",
+    "n_channel": 3,
+    "n_classes": 1,
+    "num_iterations":50,
+    "optim_params": {
+        "lr": 1e-3,
+        "momentum": 0.66,
+        "nesterov": true,
+        "weight_decay": 0.0005
+    },
+    "patchsize": 256,
+    "reg_m": 0.29,
+    "subset_folder": "/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/data_loader/subset",
+    "eval_output":"/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/data_loader/eval_output",
+    "test_interval": 50,
+    "valid_ratio": 0.65
+}

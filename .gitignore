@@ -1,0 +1,17 @@
+*.tif
+*.TIF
+*.TIFF
+*.pt
+*.pkl
+*.ipynb
+__pycache__
+*.zip
+*.npy
+*.ipynb_checkpoints
+*wandb/
+*data_loader/output_tif/
+*.cpg
+*.dbf
+*.prj
+*.shp
+*.cpg
