@@ -1,25 +1,32 @@
-# inspired from https://github.com/thuml/CDAN , https://github.com/ZJULearning/ALDA and https://github.com/kilianFatras/JUMBOT/tree/main/Domain_Adaptation
+import segmentation_models_pytorch as smp
 import json
 import random
-import torch
-import torch.optim as optim
 import wandb
 import numpy as np
 import os
-import time 
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import tifffile as tiff
 
-# from model.unet import UNet
-from train import Train
-from data_loader.dataset import Dataset
-import gc
+import torch
+import torch.optim as optim
+from torch import nn
+import torch.nn.functional as F
+from torch.utils.data.sampler import SubsetRandomSampler
+import torchvision.models as models
+from torchvision import transforms, utils
+from torch.autograd import Variable
 
-# reading config file
-with open(
-    "/share/projects/erasmus/pratichhya_sharma/DAoptim/DAoptim/utils/config.json",
-    "r",
-) as read_file:
-    config = json.load(read_file)
+# files
+from dataloader.dataloader import Dataset
+from utils.criterion import DiceLoss
+from utils import eval_metrics
 
+
+DC = DiceLoss()
+
+NUM_EPOCHS = 5
+base_lr = 0.01
 
 
 def set_seed(seed):
@@ -28,155 +35,157 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.enabled = False
-    torch.backends.cudnn.deterministic = True
+
     return True
 
 
-# set network
-# net = UNet(config["n_channel"], config["n_classes"])
-
-
-from seg_model_smp.models_predefined import segmentation_models_pytorch as psmp
-net = psmp.Unet( encoder_name="resnet34",        # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
-   encoder_weights=None,     # use `imagenet` pre-trained weights for encoder initialization
-   in_channels=3,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-   classes=1,                      # model output channels (number of classes in your dataset)
+net = smp.Unet(
+    encoder_name="resnet34",
+    encoder_weights=None,
+    in_channels=3,
+    classes=8,
+    # model output channels (number of classes in your dataset)
+    activation="softmax"
 )
-# net.load_state_dict(torch.load(config["model_path"] + "DA_jumbot_all.pt"))
 net.cuda()
 
-saving_interval = 10
-NUM_EPOCHS = 30#config["epoch"]
-lrs = []
+
+def train_epoch(optimizer, dataloader):
+    len_train = len(dataloader)
+    f1_source, acc, IoU, K = 0.0, 0.0, 0.0, 0.0
+    total_loss = 0
+    net.train()
+    iter_ = 0
+
+    for batch_idx, (data, target) in tqdm(enumerate(dataloader), total=len_train):
+        data, target = Variable(data.cuda()), Variable(target.cuda())
+        # zero optimizer
+        optimizer.zero_grad()
+        output = net(data)
+
+        loss = DC(output, target)
+        loss.backward()
+        optimizer.step()
+
+        # evaluation
+        f1_source_step, acc_step, IoU_step, K_step = eval_metrics.f1_score(
+            target, output)
+        f1_source += f1_source_step
+        acc += acc_step
+        IoU += IoU_step
+        K += K_step
+        total_loss += loss
+        # wandb.log({'train_Loss': loss,'train_F1': f1_source_step,'train_acc':acc_step,'train_IoU':IoU_step})
+    return (total_loss/len_train), [f1_source/len_train, acc/len_train, IoU/len_train, K/len_train]
 
 
-def main(
-    net,
-):
-    set_seed(42)
+def eval_epoch(epochs, dataloader):
+    len_train = len(dataloader)
+    f1_source, acc, IoU, K = 0.0, 0.0, 0.0, 0.0
+    val_loss = 0
+    net.eval()
+    iter_ = 0
+    total_loss = 0
+    with torch.no_grad():
+        for batch_idx, (data, target) in tqdm(enumerate(dataloader), total=len_train):
+            data, target = Variable(data.cuda()), Variable(target.cuda())
+            output = net(data)
+            loss = DC(output, target)
 
-    # seting training and testing dataset
-    dsource_loaders = Dataset(config["data_folder"], config["patchsize"], "both")
-    dsource_loaders.array_torch()
-    source_dataloader = dsource_loaders.source_dataloader
-    val_source_dataloader = dsource_loaders.valid_source_dataloader
+            # evaluation
+            f1_source_step, acc_step, IoU_step, K_step = eval_metrics.f1_score(
+                target, output)
+            f1_source += f1_source_step
+            acc += acc_step
+            IoU += IoU_step
+            K += K_step
+            total_loss += loss
 
-    #dtarget_loaders = Dataset(config["data_folder"], config["patchsize"], "training_target")
-    #dtarget_loaders.array_torch()
-    target_dataloader = dsource_loaders.target_dataloader
-    val_target_dataloader = dsource_loaders.valid_target_dataloader
+            if epochs % 2 == 0:
+                pred = np.rint(output.data.cpu().numpy()[0])
+                gt = target.data.cpu().numpy()[0]
+                print(f"shape of pred: {pred.shape}")
+                print(f"shape of gt: {gt.shape}")
+                # tiff.imwrite(
+                #    os.path.join(config["eval_output"], f"rgb_val{i+1}" + ".tif"),
+                #    rgb,
+                # )
+                # tiff.imwrite(
+                #    os.path.join(config["eval_output"], f"pred_val{i+1}" + ".tif"),
+                #    pred,
+                # )
+                images_pred = wandb.Image(
+                    pred, caption="Top: Output, Bottom: Input")
+                # # images_rgb = wandb.Image(rgb, caption="Top: Output, Bottom: Input")
+                images_gt = wandb.Image(
+                    gt, caption="Top: Output, Bottom: Input")
+                wandb.log({"Ground truth": images_gt,
+                           "Prediction": images_pred})
+            # wandb.log({'Val_Loss': loss,'Val_F1': f1_source_step,'Val_acc':acc_step,'Val_IoU':IoU_step})
+    return (total_loss/len_train), [f1_source/len_train, acc/len_train, IoU/len_train, K/len_train]
 
-    # computing the length
-    len_train_source = len(source_dataloader)  # training steps
-    len_train_target = len(target_dataloader)
-    print(
-        f"length of train source:{len_train_source}, lenth of train target is {len_train_target}"
-    )
-    # computing the length
-    len_val_source = len(val_source_dataloader)  # training steps
-    len_val_target = len(val_target_dataloader)
-    print(
-        f"length of validation source:{len_val_source}, lenth of validation target is {len_val_target}"
-    )
 
+def main(net):
     parameter_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"The model has {parameter_num:,} trainable parameters")
 
-    ## set optimizer
-    # optimizer = optim.SGD(
-    #     net.parameters(), lr=config["base_lr"],momentum=0.66, weight_decay=0.0005
-    # )
-    optimizer=optim.Adam(net.parameters(),lr=config["base_lr"])
+    # set optimizer
+    optimizer = optim.Adam(net.parameters(), lr=base_lr, weight_decay=0.0005)
 
-    # param_lr = []
-    # for param_group in optimizer.param_groups:
-    #     param_lr.append(param_group["lr"])
-    # We define the scheduler
-    # schedule_param = config["lr_param"]
-    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [300, 1000, 20000], gamma=schedule_param["gamma"])
-    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, eta_min=0)
-    
-    patience = 5
-    the_last_loss = 10000000
-    trigger_times = 0
-    test_f1 = 0
-    best_f1 = []
-    scaler = torch.cuda.amp.GradScaler()
+    # define the scheduler
+    scheduler = optim.lr_scheduler.MultiStepLR(
+        optimizer, [1, 10, 20], gamma=0.1)
+
+    # calling the dataloader
+    d_loaders = Dataset(
+        "/home/jovyan/private/MultiClassSegmentation/dataloader")
+    d_loaders.array_torch()
+    train_data = d_loaders.train_data
+    val_data = d_loaders.val_data
+    test_data = d_loaders.test_data
+
     for e in range(1, NUM_EPOCHS + 1):
         print("----------------------Traning phase-----------------------------")
-        train_loss,transfer_loss, acc_mat = Train.train_epoch(net,optimizer, source_dataloader, target_dataloader, scaler)
+        train_loss, acc_mat = train_epoch(optimizer, train_data)
         print(f"Training loss in average for epoch {str(e)} is {train_loss}")
-        print(f"transfer_loss in average for epoch {str(e)} is {transfer_loss}")
         print(f"Training F1 in average for epoch {str(e)} is {acc_mat[0]}")
-        print(f"Training Accuracy in average for epoch {str(e)} is {acc_mat[1]}")
+        print(
+            f"Training Accuracy in average for epoch {str(e)} is {acc_mat[1]}")
         print(f"Training IOU in average for epoch {str(e)} is {acc_mat[2]}")
-        print(f"Training K in average for epoch {str(e)} is {acc_mat[3]}")
-        # wandb.log({'E_Train Loss': train_loss,'E_Transfer Loss': transfer_loss,'E_Train_F1': acc_mat[0],'E_Train_acc':acc_mat[1],'E_Train_IoU':acc_mat[2]})
+        # print(f"Training K in average for epoch {str(e)} is {acc_mat[3]}")
+        wandb.log({'Train Loss': train_loss,
+                   'Train_F1': acc_mat[0], 'Train_acc': acc_mat[1], 'Train_IoU': acc_mat[2], 'Train_Kappa': acc_mat[3]}, step=e)
         # (total/batch)*epoch=iteration
+        del train_loss, acc_mat
+
         print("----------------------Evaluation phase-----------------------------")
-        valid_loss,valid_transfer, val_acc_mat = Train.eval_epoch(e, net, source_dataloader, target_dataloader,scaler)
-        print(f"Evaluation Total loss in average for epoch {str(e)} is {valid_loss}")
-        print(f"Evaluation Transfer loss in average for epoch {str(e)} is {valid_transfer}")
-        print(f"Evaluation F1 in average for epoch {str(e)} is {val_acc_mat[0]}")
-        print(f"Evaluation Accuracy in average for epoch {str(e)} is {val_acc_mat[1]}")
-        print(f"Evaluation IOU in average for epoch {str(e)} is {val_acc_mat[2]}")
-        print(f"Evaluation K in average for epoch {str(e)} is {val_acc_mat[3]}")
-        best_f1.append(val_acc_mat[0])
-        # wandb.log({'E_Train Loss': train_loss,'E_Transfer Loss': transfer_loss,'E_Train_F1': acc_mat[0],'E_Train_acc':acc_mat[1],'E_Train_IoU':acc_mat[2],'E_Val_Loss': valid_loss,'E_Val_Transfer': valid_transfer,'E_Val_F1': val_acc_mat[0],'E_Val_acc':val_acc_mat[1],'E_Val_IoU':val_acc_mat[2]})
+        f1_collect = []
+        valid_loss, acc_mat = eval_epoch(e, val_data)
+        print(f"Evaluation loss in average for epoch {str(e)} is {valid_loss}")
+        print(f"Evaluation F1 in average for epoch {str(e)} is {acc_mat[0]}")
+        f1_collect.append(acc_mat[0])
+        print(
+            f"Evaluation Accuracy in average for epoch {str(e)} is {acc_mat[1]}")
+        print(f"Evaluation IOU in average for epoch {str(e)} is {acc_mat[2]}")
+        # print(f"Evaluation K in average for epoch {str(e)} is {acc_mat[3]}")
+        wandb.log({'Val_Loss': valid_loss,
+                   'Val_F1': acc_mat[0], 'Val_acc': acc_mat[1], 'Val_IoU': acc_mat[2], 'Val_Kappa': acc_mat[3]}, step=e)
+        del valid_loss, acc_mat
 
-        # Decay Learning Rate kanxi: check this
-        # if e % 10 == 0:
-        #     scheduler.step()
-        # # Print Learning Rate
-        # print("last learning rate:", scheduler.get_last_lr(), "LR:", scheduler.get_lr())
-
-        # Early stopping
-        print("###################### Early stopping ##########################")
-        the_current_loss = valid_loss
-        print("The current validation loss:", the_current_loss)
-        
-        if the_current_loss >= the_last_loss:
-            trigger_times += 1
-            if test_f1 <= val_acc_mat[0]:
-                test_f1 = val_acc_mat[0]
-                # torch.save(net.state_dict(), config["model_path"] + "f1_Minawao_nduta.pt")
-            print("trigger times:", trigger_times)
-            if trigger_times == patience:
-                print("Early stopping!\nStart to test process.")
-                # torch.save(net.state_dict(), config["model_path"] + "es_Minawao_nduta.pt")
-        else:
-            print(f"trigger times: {trigger_times}")
-            the_last_loss = the_current_loss
-            
-#         del valid_loss, acc_mat
-#         # lrs.append(optimizer.param_groups[0]["lr"])
-        # print("learning rates are:",lrs
-    del train_loss,transfer_loss,acc_mat, val_acc_mat,valid_loss
+    max_f1 = max(f1_collect)
+    # torch.save(net.state_dict(),"saved_model/multi_seg_v0")
     print("finished")
-    print(f"best f1 was:{max(best_f1)}")
-    # wandb.log({'best_f1': best_f1,})
-    # torch.save(net.state_dict(), config["model_path"] + "Minawao_nduta.pt")
-    gc.collect()
-    torch.cuda.empty_cache()
-
+    return max_f1
 
 
 if __name__ == "__main__":
-    # torch.cuda.empty_cache()
-    # wandb.login()
-    # wandb.init(project="minawao")
-    # file_object = open(config["time_file"]+'time_taken.txt', 'a')
-    # start = time.time()
-    main(net)
-    # end = time.time()
-    # hours, rem = divmod(end-start, 3600)
-    # minutes, seconds = divmod(rem, 60)
-    # print("{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
-    # Append at the end of file
-    # file_object.write("\n time it took to run emd model with 8 batchsize {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
-    # # Close the file
-    # file_object.close()
-
-    
+    wandb.login()
+    wandb.init(project="multi_class")
+    for i in range(2):
+        f1 = main(net)
+        with open("./f1.txt", "a") as a_file:
+            a_file.write("\n")
+            a_file.write(f"Unet Trial{i+1} max evaluation f1: {f1}")
