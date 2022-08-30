@@ -1,0 +1,49 @@
+Unet Trial1 max evaluation with 2000 patches f1: 0.8265175819396973
+Unet Trial2 max evaluation with 2000 patches f1: 0.8336491584777832
+Unet Trial3 max evaluation with 2000 patches f1: 0.8312281966209412
+Unet Trial4 max evaluation with 2000 patches f1: 0.7498300671577454
+Unet Trial5 max evaluation with 2000 patches f1: 0.8306424021720886
+
+
+UNet++ Trial1 max evaluation with 2000 patches f1: 0.8308021426200867
+UNet++ Trial1 max evaluation with 2000 patches f1: 0.8204552531242371
+UNet++ Trial1 max evaluation with 2000 patches f1: 0.8209142088890076
+
+Unet++ Trial1 for 2000 patches max evaluation f1: 0.8154423236846924
+Unet++ Trial2 for 2000 patches max evaluation f1: 0.8178728222846985
+Unet++ Trial3 for 2000 patches max evaluation f1: 0.8214002251625061
+Unet++ Trial4 for 2000 patches max evaluation f1: 0.8312838673591614
+Unet++ Trial5 for 2000 patches max evaluation f1: 0.32810041308403015
+
+FPN Trial 1 for 2000 patches max evaluation f1: 0.80626380443573
+FPN Trial 2 for 2000 patches max evaluation f1: 0.821391761302948
+FPN Trial 3 for 2000 patches max evaluation f1: 0.8176735639572144
+FPN Trial 4 for 2000 patches max evaluation f1: 0.8228499889373779
+FPN Trial 5 for 2000 patches max evaluation f1: 0.8168461322784424
+
+
+Linknet Trial 1 for 2000 patches max evaluation f1: 0.7616060376167297
+Linknet Trial 2 for 2000 patches max evaluation f1: 0.7834935784339905
+Linknet Trial 3 for 2000 patches max evaluation f1: 0.8168097734451294
+Linknet Trial 4 for 2000 patches max evaluation f1: 0.8202869892120361
+Linknet Trial 5 for 2000 patches max evaluation f1: 0.7828084230422974
+
+PSPNet Trial 1 for 2000 patches max evaluation f1: 0.8290280699729919
+PSPNet Trial 2 for 2000 patches max evaluation f1: 0.8214176893234253
+PSPNet Trial 3 for 2000 patches max evaluation f1: 0.7442305088043213
+PSPNet Trial 4 for 2000 patches max evaluation f1: 0.8290920853614807
+PSPNet Trial 5 for 2000 patches max evaluation f1: 0.765191376209259
+
+
+DeepLabV3 Trial 1 for 2000 patches max evaluation f1: 0.8066868185997009
+DeepLabV3 Trial 2 for 2000 patches max evaluation f1: 0.816759467124939
+DeepLabV3 Trial 3 for 2000 patches max evaluation f1: 0.8174254894256592
+DeepLabV3 Trial 4 for 2000 patches max evaluation f1: 0.8213721513748169
+DeepLabV3 Trial 5 for 2000 patches max evaluation f1: 0.8141288757324219
+
+DeepLabV3Plus Trial 1 for 2000 patches max evaluation f1: 0.8334612250328064
+DeepLabV3Plus Trial 2 for 2000 patches max evaluation f1: 0.8325808048248291
+DeepLabV3Plus Trial 3 for 2000 patches max evaluation f1: 0.8231246471405029
+DeepLabV3Plus Trial 4 for 2000 patches max evaluation f1: 0.8242495656013489
+DeepLabV3Plus Trial 5 for 2000 patches max evaluation f1: 0.785228967666626
+
