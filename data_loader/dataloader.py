@@ -24,6 +24,7 @@ class Dataset():
         self.data_folder = data_folder
 
     def array_torch(self):
+        # here i had already created npy file for easy loading of data
         print("On the way to find data and make our final dataloader")
         self.Xmain = np.load(self.data_folder + "/npy/Xdata_256mul_nonorm.npy")
         self.Ymain = np.load(self.data_folder + "/npy/Ydata_256mul_nonorm.npy")

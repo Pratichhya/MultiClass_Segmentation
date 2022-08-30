@@ -25,8 +25,8 @@ from utils import eval_metrics
 
 DC = DiceLoss()
 
-NUM_EPOCHS = 5
-base_lr = 0.01
+NUM_EPOCHS = 30
+base_lr = 0.001
 
 
 def set_seed(seed):
@@ -47,7 +47,7 @@ net = smp.Unet(
     encoder_weights=None,
     in_channels=3,
     classes=8,
-    # model output channels (number of classes in your dataset)
+    # model output channels (number of classes in dataset)
     activation="softmax"
 )
 net.cuda()
@@ -78,7 +78,7 @@ def train_epoch(optimizer, dataloader):
         IoU += IoU_step
         K += K_step
         total_loss += loss
-        # wandb.log({'train_Loss': loss,'train_F1': f1_source_step,'train_acc':acc_step,'train_IoU':IoU_step})
+        del output, target, f1_source_step, acc_step, IoU_step, K_step
     return (total_loss/len_train), [f1_source/len_train, acc/len_train, IoU/len_train, K/len_train]
 
 
@@ -104,31 +104,25 @@ def eval_epoch(epochs, dataloader):
             K += K_step
             total_loss += loss
 
-            if epochs % 2 == 0:
-                pred = np.rint(output.data.cpu().numpy()[0])
-                gt = target.data.cpu().numpy()[0]
-                print(f"shape of pred: {pred.shape}")
-                print(f"shape of gt: {gt.shape}")
-                # tiff.imwrite(
-                #    os.path.join(config["eval_output"], f"rgb_val{i+1}" + ".tif"),
-                #    rgb,
-                # )
-                # tiff.imwrite(
-                #    os.path.join(config["eval_output"], f"pred_val{i+1}" + ".tif"),
-                #    pred,
-                # )
-                images_pred = wandb.Image(
-                    pred, caption="Top: Output, Bottom: Input")
-                # # images_rgb = wandb.Image(rgb, caption="Top: Output, Bottom: Input")
-                images_gt = wandb.Image(
-                    gt, caption="Top: Output, Bottom: Input")
-                wandb.log({"Ground truth": images_gt,
-                           "Prediction": images_pred})
-            # wandb.log({'Val_Loss': loss,'Val_F1': f1_source_step,'Val_acc':acc_step,'Val_IoU':IoU_step})
+            if epochs % 10 == 0:
+                pred = np.argmax(output.data.cpu().numpy()[0], axis=0)
+                gt = np.argmax(target.data.cpu().numpy()[0], axis=0)
+                # for a new task don't forget to create a folder
+                tiff.imwrite(
+                    os.path.join("./eval_output/unet",
+                                 f"gt_val{i+1}" + ".tif"),
+                    gt,
+                )
+                tiff.imwrite(
+                    os.path.join("./eval_output/unet",
+                                 f"pred_val{i+1}" + ".tif"),
+                    pred,
+                )
+                del output, target, f1_source_step, acc_step, IoU_step, K_step
     return (total_loss/len_train), [f1_source/len_train, acc/len_train, IoU/len_train, K/len_train]
 
 
-def main(net):
+def main(i, net):
     parameter_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"The model has {parameter_num:,} trainable parameters")
 
@@ -140,14 +134,13 @@ def main(net):
         optimizer, [1, 10, 20], gamma=0.1)
 
     # calling the dataloader
-    d_loaders = Dataset(
-        "/home/jovyan/private/MultiClassSegmentation/dataloader")
+    d_loaders = Dataset("./dataloader")
     d_loaders.array_torch()
     train_data = d_loaders.train_data
     val_data = d_loaders.val_data
     test_data = d_loaders.test_data
 
-    for e in range(1, NUM_EPOCHS + 1):
+    for e in range(NUM_EPOCHS):
         print("----------------------Traning phase-----------------------------")
         train_loss, acc_mat = train_epoch(optimizer, train_data)
         print(f"Training loss in average for epoch {str(e)} is {train_loss}")
@@ -176,16 +169,19 @@ def main(net):
         del valid_loss, acc_mat
 
     max_f1 = max(f1_collect)
-    # torch.save(net.state_dict(),"saved_model/multi_seg_v0")
+    # save = "./Unet_trial_"+str(i)+"_multiseg.pt"
+    # torch.save(net.state_dict(), save)
     print("finished")
+    del net
     return max_f1
 
 
 if __name__ == "__main__":
-    wandb.login()
-    wandb.init(project="multi_class")
-    for i in range(2):
-        f1 = main(net)
+    for i in range(5):
+        wandb.login()
+        wandb.init(project="loss", reinit=True)
+        f1 = main(i, net)
         with open("./f1.txt", "a") as a_file:
             a_file.write("\n")
-            a_file.write(f"Unet Trial{i+1} max evaluation f1: {f1}")
+            a_file.write(f"Unet Trial {i+1} with max evaluation f1: {f1}")
+            torch.cuda.empty_cache()
